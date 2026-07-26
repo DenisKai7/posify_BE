@@ -106,12 +106,44 @@ func main() {
 			r.Delete("/products/{id}", productHandler.Delete)
 		})
 
+		// Discounts
+		discountRepo := repository.NewDiscountRepo(pool)
+		discountSvc := service.NewDiscountService(discountRepo)
+		discountHandler := handler.NewDiscountHandler(discountSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Post("/discounts/validate", discountHandler.Validate)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
+			r.Post("/discounts", discountHandler.Create)
+			r.Get("/discounts", discountHandler.List)
+		})
+
+		// Shifts — all authenticated roles
+		shiftRepo := repository.NewShiftRepo(pool)
+		shiftSvc := service.NewShiftService(shiftRepo)
+		shiftHandler := handler.NewShiftHandler(shiftSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Get("/shifts/current", shiftHandler.GetCurrent)
+			r.Post("/shifts/start", shiftHandler.Start)
+			r.Post("/shifts/close", shiftHandler.Close)
+		})
+
 		// Reports — OWNER & MANAGER
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
 			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
 			r.Get("/reports/summary", reportHandler.Summary)
 			r.Get("/reports/sales-chart", reportHandler.SalesChart)
+			r.Get("/reports/sales-summary", reportHandler.SalesSummary)
+			r.Get("/reports/top-products", reportHandler.TopProducts)
+			r.Get("/reports/payment-methods", reportHandler.PaymentMethods)
+			r.Get("/reports/export/excel", reportHandler.ExportExcel)
 		})
 	})
 
