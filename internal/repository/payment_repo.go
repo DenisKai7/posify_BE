@@ -72,3 +72,30 @@ func (r *PaymentRepo) MarkExpired(ctx context.Context, orderID string) error {
 	)
 	return err
 }
+
+// CreateQRISFromMidtrans stores a real Midtrans QRIS charge result
+func (r *PaymentRepo) CreateQRISFromMidtrans(ctx context.Context, tenantID, orderID string, amount float64, qrString, qrURL, midtransTxID string) (*model.QRISPayment, error) {
+	p := &model.QRISPayment{}
+	expiresAt := time.Now().Add(15 * time.Minute) // Midtrans QRIS expires in 15 min
+
+	err := r.pool.QueryRow(ctx,
+		`INSERT INTO qris_payments (tenant_id, order_id, amount, qr_string, qr_url, status, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)
+		 RETURNING id, tenant_id, order_id, amount, qr_string, qr_url, status, expires_at, created_at`,
+		tenantID, orderID, amount, qrString, qrURL, expiresAt,
+	).Scan(&p.ID, &p.TenantID, &p.OrderID, &p.Amount, &p.QRString, &p.QRURL, &p.Status, &p.ExpiresAt, &p.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create midtrans qris: %w", err)
+	}
+	return p, nil
+}
+
+// UpdateStatus updates payment status (from webhook or polling)
+func (r *PaymentRepo) UpdateStatus(ctx context.Context, orderID, status string) error {
+	query := `UPDATE qris_payments SET status = $2 WHERE order_id = $1 AND status = 'PENDING'`
+	if status == "PAID" {
+		query = `UPDATE qris_payments SET status = $2, paid_at = NOW() WHERE order_id = $1 AND status = 'PENDING'`
+	}
+	_, err := r.pool.Exec(ctx, query, orderID, status)
+	return err
+}

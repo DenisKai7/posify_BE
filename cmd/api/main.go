@@ -129,7 +129,7 @@ func main() {
 			r.Post("/payments/qris/generate", paymentHandler.GenerateQRIS)
 			r.Get("/payments/qris/status/{orderID}", paymentHandler.GetStatus)
 		})
-		r.Post("/api/v1/payments/qris/webhook", paymentHandler.Webhook) // public webhook
+		r.Post("/payments/qris/webhook", paymentHandler.Webhook) // public webhook (Perbaikan: hapus prefix /api/v1 ganda)
 
 		// Customers & Loyalty
 		customerRepo := repository.NewCustomerRepo(pool)
@@ -183,6 +183,46 @@ func main() {
 			r.Get("/shifts/current", shiftHandler.GetCurrent)
 			r.Post("/shifts/start", shiftHandler.Start)
 			r.Post("/shifts/close", shiftHandler.Close)
+		})
+
+		// Payment Gateway Settings — OWNER & MANAGER
+		pgRepo := repository.NewPaymentGatewayRepo(pool)
+		pgSvc := service.NewPaymentGatewayService(pgRepo)
+		pgHandler := handler.NewPaymentGatewayHandler(pgSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
+			r.Get("/settings/payment", pgHandler.Get)
+			r.Put("/settings/payment", pgHandler.Update)
+			r.Post("/settings/payment/test", pgHandler.Test)
+		})
+
+		// Midtrans QRIS Integration
+		midtransSvc := service.NewMidtransService(pool, pgRepo, paymentRepo)
+		midtransHandler := handler.NewMidtransHandler(midtransSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Post("/payments/qris/charge", midtransHandler.Charge)
+		})
+		r.Post("/payments/midtrans/webhook", midtransHandler.Webhook) // public webhook
+
+		// Membership Tiers — All Authenticated Users
+		tierRepo := repository.NewTierRepo(pool)
+		tierSvc := service.NewTierService(tierRepo)
+		tierHandler := handler.NewTierHandler(tierSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Get("/tiers", tierHandler.List)
+		})
+
+		// Membership Tiers Management — OWNER & MANAGER Only
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
+			r.Put("/tiers/{id}", tierHandler.Update)
 		})
 
 		// Reports — OWNER & MANAGER
