@@ -70,6 +70,16 @@ func main() {
 	syncSvc := service.NewSyncService(syncRepo, pool)
 	syncHandler := handler.NewSyncHandler(syncSvc)
 
+	// Product management
+	productRepo := repository.NewProductRepo(pool)
+	productSvc := service.NewProductService(productRepo)
+	productHandler := handler.NewProductHandler(productSvc)
+
+	// Reports
+	reportRepo := repository.NewReportRepo(pool)
+	reportSvc := service.NewReportService(reportRepo)
+	reportHandler := handler.NewReportHandler(reportSvc)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
@@ -81,18 +91,27 @@ func main() {
 			r.Get("/sync/pull", syncHandler.Pull)
 		})
 
+		// Protected product list — all authenticated roles (for cashier pull)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Get("/products", productHandler.List)
+		})
+
 		// Product management — OWNER & MANAGER only
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
 			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
-			// ponytail: wire product CRUD handler here when built
+			r.Post("/products", productHandler.Create)
+			r.Put("/products/{id}", productHandler.Update)
+			r.Delete("/products/{id}", productHandler.Delete)
 		})
 
 		// Reports — OWNER only
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
 			r.Use(middleware.RequireRole("OWNER"))
-			// ponytail: wire reports handler here when built
+			r.Get("/reports/summary", reportHandler.Summary)
+			r.Get("/reports/sales-chart", reportHandler.SalesChart)
 		})
 	})
 
