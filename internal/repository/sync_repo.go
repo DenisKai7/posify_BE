@@ -65,12 +65,16 @@ func (r *SyncRepo) SyncTransaction(ctx context.Context, tx pgx.Tx, tenantID stri
 			return false, fmt.Errorf("insert item: %w", err)
 		}
 
-		_, err = tx.Exec(ctx,
-			`UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		tag, err := tx.Exec(ctx,
+			`UPDATE products SET stock = stock - $1, updated_at = NOW(), version = version + 1
+			 WHERE id = $2 AND tenant_id = $3 AND stock >= $1`,
 			item.Quantity, item.ProductID, tenantID,
 		)
 		if err != nil {
 			return false, fmt.Errorf("update stock: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return false, fmt.Errorf("insufficient stock for product %s", item.ProductID)
 		}
 	}
 

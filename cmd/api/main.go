@@ -41,6 +41,11 @@ func main() {
 	}
 	log.Println("✓ Migrations complete")
 
+	// Start background scheduler
+	scheduler := service.NewScheduler(pool)
+	scheduler.Start()
+	defer scheduler.Stop()
+
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
@@ -80,9 +85,16 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	reportHandler := handler.NewReportHandler(reportSvc)
 
+	// Rate limiters
+	authLimiter := middleware.RateLimit(10, time.Minute)    // 10 auth attempts/min
+	paymentLimiter := middleware.RateLimit(30, time.Minute) // 30 payment ops/min
+
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Post("/auth/register", authHandler.Register)
-		r.Post("/auth/login", authHandler.Login)
+		r.Group(func(r chi.Router) {
+			r.Use(authLimiter)
+			r.Post("/auth/register", authHandler.Register)
+			r.Post("/auth/login", authHandler.Login)
+		})
 
 		// Protected sync endpoints — all authenticated roles
 		r.Group(func(r chi.Router) {
@@ -113,6 +125,7 @@ func main() {
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
+			r.Use(paymentLimiter)
 			r.Post("/payments/qris/generate", paymentHandler.GenerateQRIS)
 			r.Get("/payments/qris/status/{orderID}", paymentHandler.GetStatus)
 		})
