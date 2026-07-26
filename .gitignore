@@ -1,0 +1,33 @@
+# Go Binary / Executable Output
+*.exe
+*.exe-*
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+posify-server
+main
+
+# Environment & Secrets Files (Penting: Mencegah Kunci Supabase Bocor!)
+.env
+*.env
+!.env.example
+
+# Go Vendor Directory (Jika menggunakan go mod vendor, bisa di-uncomment)
+# /vendor/
+
+# IDEs & System Files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage / Profiling
+*.coverprofile
+coverage.txt
+cpu.pprof
+mem.pprof
