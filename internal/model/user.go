@@ -14,7 +14,7 @@ type Tenant struct {
 type User struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
-	Name         string    `json:"name"`
+	FullName     string    `json:"full_name"`
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`

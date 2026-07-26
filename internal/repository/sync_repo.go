@@ -115,10 +115,25 @@ func (r *SyncRepo) GetProducts(ctx context.Context, tenantID string, since *time
 
 // InsertSyncLog records a push batch for audit
 func (r *SyncRepo) InsertSyncLog(ctx context.Context, sl model.SyncLog) error {
+	errMsg := ""
+	if len(sl.Errors) > 0 {
+		errMsg = sl.Errors[0]
+		for _, e := range sl.Errors[1:] {
+			errMsg += "; " + e
+		}
+	}
+	status := "SUCCESS"
+	if sl.ErrorCount > 0 {
+		status = "PARTIAL"
+	}
+	if sl.SyncedCount == 0 && sl.ErrorCount > 0 {
+		status = "FAILED"
+	}
+
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO sync_logs (tenant_id, user_id, batch_size, synced_count, duplicate_count, error_count, errors)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		sl.TenantID, sl.UserID, sl.BatchSize, sl.SyncedCount, sl.DuplicateCount, sl.ErrorCount, sl.Errors,
+		`INSERT INTO sync_logs (tenant_id, user_id, total_synced, status, error_message)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		sl.TenantID, sl.UserID, sl.SyncedCount, status, errMsg,
 	)
 	return err
 }

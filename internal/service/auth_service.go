@@ -52,7 +52,7 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest) (*AuthR
 
 	user := &model.User{
 		TenantID:     tenant.ID,
-		Name:         req.OwnerName,
+		FullName:     req.OwnerName,
 		Email:        req.Email,
 		PasswordHash: string(hash),
 		Role:         "OWNER",
