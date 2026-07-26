@@ -16,6 +16,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"posify-backend/internal/handler"
+	"posify-backend/internal/middleware"
 	"posify-backend/internal/repository"
 	"posify-backend/internal/service"
 	"posify-backend/pkg/database"
@@ -64,9 +65,21 @@ func main() {
 	authSvc := service.NewAuthService(authRepo)
 	authHandler := handler.NewAuthHandler(authSvc)
 
+	// Sync routes
+	syncRepo := repository.NewSyncRepo(pool)
+	syncSvc := service.NewSyncService(syncRepo, pool)
+	syncHandler := handler.NewSyncHandler(syncSvc)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
+
+		// Protected sync endpoints
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Post("/sync/push", syncHandler.Push)
+			r.Get("/sync/pull", syncHandler.Pull)
+		})
 	})
 
 	port := os.Getenv("PORT")
