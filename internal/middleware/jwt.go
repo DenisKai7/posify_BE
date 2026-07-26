@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -38,6 +39,7 @@ func JWTAuth(next http.Handler) http.Handler {
 		}, jwt.WithValidMethods([]string{"HS256"}))
 
 		if err != nil || !token.Valid {
+			log.Printf("JWTAuth: token invalid: %v", err)
 			http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
 			return
 		}
@@ -48,10 +50,20 @@ func JWTAuth(next http.Handler) http.Handler {
 			return
 		}
 
+		// Normalize role to uppercase string
+		roleRaw := claims["role"]
+		roleStr := ""
+		switch v := roleRaw.(type) {
+		case string:
+			roleStr = strings.ToUpper(v)
+		default:
+			log.Printf("JWTAuth: unexpected role type: %T value: %v", roleRaw, roleRaw)
+		}
+
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, UserIDKey, claims["sub"])
 		ctx = context.WithValue(ctx, TenantIDKey, claims["tenant_id"])
-		ctx = context.WithValue(ctx, RoleKey, claims["role"])
+		ctx = context.WithValue(ctx, RoleKey, roleStr)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -68,9 +80,14 @@ func RequireRole(allowed ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			role, _ := r.Context().Value(RoleKey).(string)
 			if !set[role] {
+				log.Printf("RequireRole: denied role=[%s] allowed=%v path=%s", role, allowed, r.URL.Path)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"error": "forbidden: insufficient role"})
+				json.NewEncoder(w).Encode(map[string]string{
+					"error":          "forbidden: insufficient role",
+					"role":           role,
+					"allowed_roles":  strings.Join(allowed, ","),
+				})
 				return
 			}
 			next.ServeHTTP(w, r)

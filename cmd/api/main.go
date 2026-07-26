@@ -45,7 +45,7 @@ func main() {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://127.0.0.1:3000", "http://172.20.10.2:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -106,10 +106,10 @@ func main() {
 			r.Delete("/products/{id}", productHandler.Delete)
 		})
 
-		// Reports — OWNER only
+		// Reports — OWNER & MANAGER
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
-			r.Use(middleware.RequireRole("OWNER"))
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
 			r.Get("/reports/summary", reportHandler.Summary)
 			r.Get("/reports/sales-chart", reportHandler.SalesChart)
 		})
