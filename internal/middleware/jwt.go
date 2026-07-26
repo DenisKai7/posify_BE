@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -54,4 +55,25 @@ func JWTAuth(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// RequireRole returns middleware that restricts access to the given roles.
+// Must be used after JWTAuth.
+func RequireRole(allowed ...string) func(http.Handler) http.Handler {
+	set := make(map[string]bool, len(allowed))
+	for _, r := range allowed {
+		set[r] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role, _ := r.Context().Value(RoleKey).(string)
+			if !set[role] {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"error": "forbidden: insufficient role"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

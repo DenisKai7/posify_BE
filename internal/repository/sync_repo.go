@@ -77,15 +77,26 @@ func (r *SyncRepo) SyncTransaction(ctx context.Context, tx pgx.Tx, tenantID stri
 	return true, nil
 }
 
-// GetProducts returns active products for a tenant
-func (r *SyncRepo) GetProducts(ctx context.Context, tenantID string) ([]model.SyncProduct, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, sku, name, price, stock, version, updated_at
-		 FROM products
-		 WHERE tenant_id = $1 AND is_active = TRUE AND deleted_at IS NULL
-		 ORDER BY name`,
-		tenantID,
-	)
+// GetProducts returns active products for a tenant, optionally filtered by last sync time (delta sync / LWW)
+func (r *SyncRepo) GetProducts(ctx context.Context, tenantID string, since *time.Time) ([]model.SyncProduct, error) {
+	var query string
+	var args []any
+
+	if since != nil {
+		query = `SELECT id, sku, name, price, stock, version, updated_at
+			FROM products
+			WHERE tenant_id = $1 AND is_active = TRUE AND deleted_at IS NULL AND updated_at > $2
+			ORDER BY name`
+		args = []any{tenantID, *since}
+	} else {
+		query = `SELECT id, sku, name, price, stock, version, updated_at
+			FROM products
+			WHERE tenant_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+			ORDER BY name`
+		args = []any{tenantID}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query products: %w", err)
 	}
@@ -100,4 +111,14 @@ func (r *SyncRepo) GetProducts(ctx context.Context, tenantID string) ([]model.Sy
 		products = append(products, p)
 	}
 	return products, rows.Err()
+}
+
+// InsertSyncLog records a push batch for audit
+func (r *SyncRepo) InsertSyncLog(ctx context.Context, sl model.SyncLog) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO sync_logs (tenant_id, user_id, batch_size, synced_count, duplicate_count, error_count, errors)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		sl.TenantID, sl.UserID, sl.BatchSize, sl.SyncedCount, sl.DuplicateCount, sl.ErrorCount, sl.Errors,
+	)
+	return err
 }

@@ -74,11 +74,25 @@ func main() {
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
 
-		// Protected sync endpoints
+		// Protected sync endpoints — all authenticated roles
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
 			r.Post("/sync/push", syncHandler.Push)
 			r.Get("/sync/pull", syncHandler.Pull)
+		})
+
+		// Product management — OWNER & MANAGER only
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
+			// ponytail: wire product CRUD handler here when built
+		})
+
+		// Reports — OWNER only
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER"))
+			// ponytail: wire reports handler here when built
 		})
 	})
 

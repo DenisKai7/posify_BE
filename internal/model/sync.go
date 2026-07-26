@@ -45,3 +45,14 @@ type SyncProduct struct {
 	Version   int       `json:"version"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
+
+// SyncLog records each push batch for audit
+type SyncLog struct {
+	TenantID       string
+	UserID         string
+	BatchSize      int
+	SyncedCount    int
+	DuplicateCount int
+	ErrorCount     int
+	Errors         []string
+}

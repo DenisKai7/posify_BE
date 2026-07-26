@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -22,11 +23,11 @@ func NewSyncService(repo *repository.SyncRepo, pool *pgxpool.Pool) *SyncService 
 
 // Push processes a batch of offline transactions idempotently.
 // Never fails the entire batch for one bad transaction.
-func (s *SyncService) Push(ctx context.Context, tenantID string, req model.SyncPushRequest) (*model.SyncPushResponse, error) {
+func (s *SyncService) Push(ctx context.Context, tenantID, userID string, req model.SyncPushRequest) (*model.SyncPushResponse, error) {
 	resp := &model.SyncPushResponse{}
+	var dupeCount int
 
 	for _, ot := range req.Transactions {
-		// Each transaction in its own DB transaction for isolation
 		pgxTx, err := s.pool.Begin(ctx)
 		if err != nil {
 			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: begin tx: %v", ot.OfflineTransactionID, err))
@@ -46,22 +47,39 @@ func (s *SyncService) Push(ctx context.Context, tenantID string, req model.SyncP
 			continue
 		}
 
-		// Both new inserts and skipped duplicates count as "synced"
-		_ = inserted // new=true, dup=false — both are OK
+		if !inserted {
+			dupeCount++
+		}
 		resp.SyncedIDs = append(resp.SyncedIDs, ot.OfflineTransactionID)
 	}
+
+	// Audit log — fire-and-forget
+	go func() {
+		if err := s.repo.InsertSyncLog(context.Background(), model.SyncLog{
+			TenantID:       tenantID,
+			UserID:         userID,
+			BatchSize:      len(req.Transactions),
+			SyncedCount:    len(resp.SyncedIDs),
+			DuplicateCount: dupeCount,
+			ErrorCount:     len(resp.Errors),
+			Errors:         resp.Errors,
+		}); err != nil {
+			log.Printf("sync log insert error: %v", err)
+		}
+	}()
 
 	return resp, nil
 }
 
-// Pull returns current product catalog for a tenant
-func (s *SyncService) Pull(ctx context.Context, tenantID string) (*model.SyncPullResponse, error) {
-	products, err := s.repo.GetProducts(ctx, tenantID)
+// Pull returns current product catalog for a tenant.
+// If lastSyncedAt is provided, returns only products updated after that time (delta sync / LWW).
+func (s *SyncService) Pull(ctx context.Context, tenantID string, lastSyncedAt *time.Time) (*model.SyncPullResponse, error) {
+	products, err := s.repo.GetProducts(ctx, tenantID, lastSyncedAt)
 	if err != nil {
 		return nil, err
 	}
 	if products == nil {
-		products = []model.SyncProduct{} // never null in JSON
+		products = []model.SyncProduct{}
 	}
 	return &model.SyncPullResponse{Products: products}, nil
 }

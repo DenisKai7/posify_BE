@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"posify-backend/internal/middleware"
 	"posify-backend/internal/model"
@@ -24,6 +25,7 @@ func (h *SyncHandler) Push(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing tenant"})
 		return
 	}
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 
 	var req model.SyncPushRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -36,7 +38,7 @@ func (h *SyncHandler) Push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Push(r.Context(), tenantID, req)
+	resp, err := h.svc.Push(r.Context(), tenantID, userID, req)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -46,6 +48,7 @@ func (h *SyncHandler) Push(w http.ResponseWriter, r *http.Request) {
 }
 
 // Pull handles GET /api/v1/sync/pull
+// Supports ?last_synced_at=ISO8601 for delta sync (LWW)
 func (h *SyncHandler) Pull(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := r.Context().Value(middleware.TenantIDKey).(string)
 	if !ok || tenantID == "" {
@@ -53,7 +56,15 @@ func (h *SyncHandler) Pull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Pull(r.Context(), tenantID)
+	var since *time.Time
+	if raw := r.URL.Query().Get("last_synced_at"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err == nil {
+			since = &t
+		}
+	}
+
+	resp, err := h.svc.Pull(r.Context(), tenantID, since)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
