@@ -106,6 +106,44 @@ func main() {
 			r.Delete("/products/{id}", productHandler.Delete)
 		})
 
+		// Payments — QRIS
+		paymentRepo := repository.NewPaymentRepo(pool)
+		paymentSvc := service.NewPaymentService(paymentRepo)
+		paymentHandler := handler.NewPaymentHandler(paymentSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Post("/payments/qris/generate", paymentHandler.GenerateQRIS)
+			r.Get("/payments/qris/status/{orderID}", paymentHandler.GetStatus)
+		})
+		r.Post("/api/v1/payments/qris/webhook", paymentHandler.Webhook) // public webhook
+
+		// Customers & Loyalty
+		customerRepo := repository.NewCustomerRepo(pool)
+		customerSvc := service.NewCustomerService(customerRepo)
+		customerHandler := handler.NewCustomerHandler(customerSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Get("/customers", customerHandler.Search)
+			r.Get("/customers/{id}", customerHandler.Get)
+			r.Post("/customers", customerHandler.Create)
+			r.Post("/customers/{id}/redeem", customerHandler.RedeemPoints)
+		})
+
+		// Inventory — stock adjustments & alerts
+		stockRepo := repository.NewStockRepo(pool)
+		stockSvc := service.NewStockService(stockRepo)
+		stockHandler := handler.NewStockHandler(stockSvc)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.JWTAuth)
+			r.Use(middleware.RequireRole("OWNER", "MANAGER"))
+			r.Post("/inventory/adjust", stockHandler.Adjust)
+			r.Get("/inventory/low-stock-alerts", stockHandler.LowStockAlerts)
+			r.Get("/inventory/history/{productId}", stockHandler.History)
+		})
+
 		// Discounts
 		discountRepo := repository.NewDiscountRepo(pool)
 		discountSvc := service.NewDiscountService(discountRepo)
